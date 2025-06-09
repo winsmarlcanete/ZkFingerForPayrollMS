@@ -5,13 +5,12 @@ import src.entity.Employee;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.ArrayList;
 import java.util.List;
 
-public class EnrollScreen extends JFrame {
+public class RegisterScreen extends JFrame {
 
-    public EnrollScreen() {
-        setTitle("Enroll Screen");
+    public RegisterScreen() {
+        setTitle("Register Screen");
         setSize(350, 200);
         setLocationRelativeTo(null);
         setResizable(false);
@@ -20,7 +19,7 @@ public class EnrollScreen extends JFrame {
         JPanel panel = new JPanel();
 
 
-        JLabel label = new JLabel("Enroll Screen - Add fingerprint logic here", SwingConstants.CENTER);
+        JLabel label = new JLabel("Register - Add fingerprint logic here", SwingConstants.CENTER);
         label.setFont(new Font("Arial", Font.PLAIN, 14));
         panel.add(label, BorderLayout.CENTER);
 
