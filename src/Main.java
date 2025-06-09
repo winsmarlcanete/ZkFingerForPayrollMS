@@ -1,7 +1,9 @@
 package src;
 
 import src.entity.Employee;
+import src.screen.HomeScreen;
 
+import javax.swing.*;
 import java.util.List;
 
 public class Main {
@@ -10,5 +12,9 @@ public class Main {
         for (Employee employee : emplist) {
             System.out.println(employee.getLast_name());
         }
+
+        SwingUtilities.invokeLater(() -> {
+            new HomeScreen().setVisible(true);
+        });
     }
 }
