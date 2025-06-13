@@ -6,6 +6,7 @@ import src.entity.Timecard;
 
 import java.sql.*;
 import java.time.LocalDate;
+import java.time.LocalTime;
 
 public class ZkFinger {
 
@@ -49,19 +50,18 @@ public class ZkFinger {
                 return "❌ Failed to acquire fingerprint. Error code: " + result;
             }
 
-            if (matchAgainstDatabase(template) == 0){
+            int matchedId = matchAgainstDatabase(template);
+
+            if (matchedId == 0) {
                 return "Your fingerprint does not match to anyone.";
             }
 
-            if (matchAgainstDatabase(template) != 0){
-                LocalDate localDate = LocalDate.now();
-                Date sqlDate = Date.valueOf(localDate);
-                Timecard timecard = new Timecard(matchAgainstDatabase(template),sqlDate);
-                return TimeInAndOut(timecard);
-            }
+            LocalDate localDate = LocalDate.now();
+            Date sqlDate = Date.valueOf(localDate);
+            Time sqlTime = Time.valueOf(LocalTime.now());
+            Timecard timecard = new Timecard(matchedId, sqlDate, sqlTime, sqlTime);
 
-
-            return "kaka";
+            return TimeInAndOut(timecard);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -112,88 +112,79 @@ public class ZkFinger {
     private static void cleanup() {
         if (dbHandle != 0) {
             FingerprintSensorEx.DBFree(dbHandle);
+            dbHandle = 0;
         }
         if (devHandle != 0) {
             FingerprintSensorEx.CloseDevice(devHandle);
             FingerprintSensorEx.Terminate();
+            devHandle = 0;
         }
     }
 
-    public String TimeInAndOut(Timecard timecard){
-        LocalDate today = LocalDate.now();
-        String timeIn = "INSERT INTO timecards (employee_id, date, time_in) VALUES (?, ?, ?) FROM `payrollmsdb`.`timecards` ";
-        String timeOut = "UPDATE payrollmsdb.timecards SET time_out = ? WHERE date = ? AND employee_id = ?";
-
-        Connection conn = JDBC.getConnection();
-
-        if (isTimecardExist(timecard)){
-            return "Timecard already exist!";
-
-        }
-
-        if (isTimeInNull(timecard)){
+    public String TimeInAndOut(Timecard timecard) {
+        if (!hasTimecard(timecard)) {
+            // No timecard yet → Insert time-in
             try {
-                System.out.println("Wala pang time in go na");
-                PreparedStatement stmt = conn.prepareStatement(timeIn);
+                Connection conn = JDBC.getConnection();
+                PreparedStatement stmt = conn.prepareStatement("INSERT INTO timecards (employee_id, date, time_in) VALUES (?, ?, ?)");
                 stmt.setInt(1, timecard.getEmployee_id());
                 stmt.setDate(2, timecard.getDate());
-                stmt.setTime(3,timecard.getTime_in());
-                System.out.println("Recorded timein");
+                stmt.setTime(3, timecard.getTime_in());
+                stmt.executeUpdate();
+                return "✅ Time IN recorded!";
             } catch (SQLException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
+                return "⚠️ Failed to record Time IN.";
             }
+        } else if (isTimeOutNull(timecard)) {
+            // Time-in exists, but no time-out → update time-out
+            try {
+                Connection conn = JDBC.getConnection();
+                PreparedStatement stmt = conn.prepareStatement("UPDATE timecards SET time_out = ? WHERE employee_id = ? AND date = ?");
+                stmt.setTime(1, timecard.getTime_out());
+                stmt.setInt(2, timecard.getEmployee_id());
+                stmt.setDate(3, timecard.getDate());
+                stmt.executeUpdate();
+                return "✅ Time OUT recorded!";
+            } catch (SQLException e) {
+                e.printStackTrace();
+                return "⚠️ Failed to record Time OUT.";
+            }
+        } else {
+            // Both time-in and time-out already exist
+            return "🟡 Timecard already completed for today.";
         }
-
-        try {
-            System.out.println("Sa time out ilalagay");
-            PreparedStatement stmt = conn.prepareStatement(timeOut);
-            stmt.setTime(1,timecard.getTime_out());
-            stmt.setDate(2,timecard.getDate());
-            stmt.setInt(3,timecard.getEmployee_id());
-            System.out.println("Recorded timeout");
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-
-        return "Done na";
-
     }
 
-    public boolean isTimecardExist(Timecard timecard){
-        String sql = "SELECT * FROM timecards WHERE employee_id = ? AND date = ?";
-        Connection conn = JDBC.getConnection();
 
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+    public boolean hasTimecard(Timecard timecard) {
+        String sql = "SELECT 1 FROM timecards WHERE employee_id = ? AND date = ?";
+        try (Connection conn = JDBC.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, timecard.getEmployee_id());
-            stmt.setDate(2, timecard.getDate()); // example date
-
+            stmt.setDate(2, timecard.getDate());
             ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return true;
-                // true if tapos na time card for that date
-            }
-        } catch (SQLException e){
-            e.printStackTrace();
-        }
-
-        return false;
-    }
-
-    public boolean isTimeInNull(Timecard timecard) {
-        String checkTimeIn = "SELECT 1 FROM payrollmsdb.timecards WHERE date = ? AND time_in IS NULL";
-        Connection conn = JDBC.getConnection();
-
-        try {
-            PreparedStatement stmt = conn.prepareStatement(checkTimeIn);
-            stmt.setDate(1, timecard.getDate());
-
-            ResultSet rs = stmt.executeQuery();
-            return rs.next(); // returns true if any row exists (i.e., time_in is NULL for that date)
+            return rs.next();
         } catch (SQLException e) {
             e.printStackTrace();
+            return false;
         }
-
-        return false;
     }
+
+
+    public boolean isTimeOutNull(Timecard timecard) {
+        String sql = "SELECT 1 FROM timecards WHERE employee_id = ? AND date = ? AND time_out IS NULL";
+        try (Connection conn = JDBC.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, timecard.getEmployee_id());
+            stmt.setDate(2, timecard.getDate());
+            ResultSet rs = stmt.executeQuery();
+            return rs.next();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
 
 }
