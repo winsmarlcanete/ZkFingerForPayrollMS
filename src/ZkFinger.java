@@ -5,6 +5,7 @@ import src.entity.Employee;
 import src.entity.Timecard;
 
 import java.sql.*;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
@@ -126,11 +127,27 @@ public class ZkFinger {
             // No timecard yet → Insert time-in
             try {
                 Connection conn = JDBC.getConnection();
-                PreparedStatement stmt = conn.prepareStatement("INSERT INTO timecards (employee_id, date, time_in) VALUES (?, ?, ?)");
+                PreparedStatement stmt = conn.prepareStatement(
+                        "INSERT INTO timecards (employee_id, date, time_in) VALUES (?, ?, ?)",
+                        Statement.RETURN_GENERATED_KEYS // this enables getting the auto-incremented ID
+                );
                 stmt.setInt(1, timecard.getEmployee_id());
                 stmt.setDate(2, timecard.getDate());
                 stmt.setTime(3, timecard.getTime_in());
+
+// Execute the insert
                 stmt.executeUpdate();
+
+// Get the generated timecard_id
+                ResultSet generatedKeys = stmt.getGeneratedKeys();
+                if (generatedKeys.next()) {
+                    int timecardId = generatedKeys.getInt(1); // assuming it's the first auto-increment column
+                    System.out.println("Inserted timecard ID: " + timecardId);
+
+                    // You can also store it back to your object if needed:
+                    timecard.setTimecard_id(timecardId); // if there's a setter
+                }
+
                 return "✅ Time IN recorded!";
             } catch (SQLException e) {
                 e.printStackTrace();
@@ -145,7 +162,56 @@ public class ZkFinger {
                 stmt.setInt(2, timecard.getEmployee_id());
                 stmt.setDate(3, timecard.getDate());
                 stmt.executeUpdate();
+
+                PreparedStatement stmt1 = conn.prepareStatement(
+                        "SELECT timecard_id, time_in, time_out FROM timecards WHERE employee_id = ? AND date = ?"
+                );
+                stmt1.setInt(1, timecard.getEmployee_id());
+                stmt1.setDate(2, timecard.getDate());
+
+                ResultSet rs = stmt1.executeQuery();
+
+                while (rs.next()) {
+                    Time timeInSql = rs.getTime("time_in");
+                    Time timeOutSql = rs.getTime("time_out");
+
+                    int timecardId = rs.getInt("timecard_id");
+                    timecard.setTimecard_id(timecardId);
+
+                    if (timeInSql != null && timeOutSql != null) {
+                        // Convert java.sql.Time to java.time.LocalTime
+                        LocalTime in = timeInSql.toLocalTime();
+                        LocalTime out = timeOutSql.toLocalTime();
+
+                        // Get the duration between time_in and time_out
+                        Duration duration = Duration.between(in, out);
+
+                        // Extract hours and minutes
+                        long hoursClocked = duration.toHours();
+                        long minutesClocked = duration.toMinutes() % 60;
+
+                        PreparedStatement updateStmt = conn.prepareStatement(
+                                "UPDATE `payrollmsdb`.`timecards` " +
+                                        "SET `hours_clocked` = ?, `minutes_clocked` = ? " +
+                                        "WHERE `timecard_id` = ?"
+                        );
+
+                            // Set the values
+                        updateStmt.setLong(1, hoursClocked);
+                        updateStmt.setLong(2, minutesClocked);
+                        updateStmt.setInt(3, timecard.getTimecard_id());
+
+                        // Execute the update
+                        int rowsUpdated = updateStmt.executeUpdate();
+                        System.out.println("Updated rows: " + rowsUpdated);
+
+                    } else {
+                        System.out.println("Time In or Time Out is null.");
+                    }
+                }
                 return "✅ Time OUT recorded!";
+
+
             } catch (SQLException e) {
                 e.printStackTrace();
                 return "⚠️ Failed to record Time OUT.";

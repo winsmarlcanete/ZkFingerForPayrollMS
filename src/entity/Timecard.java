@@ -33,4 +33,8 @@ public class Timecard {
     public Double getHours_clocked(){return hours_clocked;}
     public Double getMinutes_clocked(){return minutes_clocked;}
 
+    public void setTimecard_id(int timecard_id) {
+        this.timecard_id = timecard_id;
+    }
+
 }
